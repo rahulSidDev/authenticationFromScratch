@@ -19,6 +19,13 @@ app.set('views', './views');
 app.use(express.urlencoded({extended: true}));
 app.use(session({secret: 'notagoodsecret'}));
 
+const requireLogin = (req, res, next) => {
+	if (!req.session.user_id) {
+		return res.redirect('/login');
+	}
+	next();
+}
+
 app.get('/', (req, res) => {
 	res.send('this is the home page');
 });
@@ -29,13 +36,9 @@ app.get('/register', (req, res) => {
 
 app.post('/register', async (req, res) => {
 	const {password, username} = req.body;
-	const hash = await bcrypt.hash(password, 12);
-	const user = new User({
-		username: username,
-		hashedPassword: hash
-	});
+	const user = new User({username: username,hashedPassword: password});
 	await user.save();
-	req.session.user_id = foundUser._id;
+	req.session.user_id = user._id;
 	res.redirect('/');
 })
 
@@ -45,21 +48,22 @@ app.get('/login', (req, res) => {
 
 app.post('/login', async (req, res) => {
 	const {username, password} = req.body;
-	const foundUser = await User.findOne({username}); // {username: username} can be replaced by just {username}
-	const foundPassword = await bcrypt.compare(password, foundUser.hashedPassword);
-	if (foundPassword) {
+	const foundUser = await User.findAndValidate(username, password);
+	if (foundUser) {
 		req.session.user_id = foundUser._id;
-		res.send('logged in successfully.');
+		res.redirect('/secret');
 	} else {
-		res.send('something went wrong. try again');
+		res.redirect('/login');
 	}
 });
 
-app.get('/secret', (req, res) => {
-	if (!req.session.user_id) {
-		res.redirect('/login');
-	}
-	res.send('You cannot see me!');
+app.post('/logout', (req, res) => {
+	req.session.user_id = null; // req.session.destroy(); can also be used.
+	res.redirect('/login');
+});
+
+app.get('/secret', requireLogin, (req, res) => {
+	res.render('secret');
 });
 
 app.listen(3000, () => {
